@@ -228,9 +228,55 @@ host ~]# firewall-cmd --direct --get-all-rules
 
 Download Red Hat guest image `rhel-guest-image-7.3-36.x86_64.qcow2`  from Red Hat download page and save it in `/var/lib/libvirt/images/`.
 ```
-host ~]# file /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2
-/var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2: QEMU QCOW Image (v2), 10737418240 bytes
+host ~]# qemu-img info /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2
+image: /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2
+file format: qcow2
+virtual size: 10G (10737418240 bytes)
+disk size: 547M
+cluster_size: 65536
+Format specific information:
+    compat: 0.10
 ```
+
+You need to install a set of tools to interact with the cloud image:
+
+```
+host ~]# yum install -y libguestfs-tools libguestfs-xfs qemu-img
+```
+
+Set a variable `KVM_DIR` with the kvm path to avoid unnecessary repeat:
+```
+host ~]# KVM_DIR=/var/lib/libvirt/images
+```
+
+Check Red Hat kvm cloud image actual size:
+```
+host ~]# virt-filesystems --long -h --all -a $KVM_DIR/rhel-guest-image-7.3-36.x86_64.qcow2
+
+Name       Type        VFS  Label  MBR  Size  Parent
+/dev/sda1  filesystem  xfs  -      -    7.8G  -
+/dev/sda1  partition   -    -      83   7.8G  /dev/sda
+/dev/sda   device      -    -      -    10G   -
+[root@sd-73122 images]#
+```
+
+Resize the kvm cloud image to `60GB`:
+```
+host ~]# qemu-img resize $KVM_DIR/rhel-guest-image-7.3-36.x86_64.qcow2 60G
+```
+
+Confirm Red Hat kvm cloud image size after resizing:
+```
+host ~]# virt-filesystems --long -h --all -a $KVM_DIR/rhel-guest-image-7.3-36.x86_64.qcow2
+
+Name       Type        VFS  Label  MBR  Size  Parent
+/dev/sda1  filesystem  xfs  -      -    **60G**   -
+/dev/sda1  partition   -    -      83   60G   /dev/sda
+/dev/sda   device      -    -      -    **60G**   -
+```
+
+
+
 
 
 
