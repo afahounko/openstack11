@@ -15,16 +15,66 @@ Hard Drive: 2 x 500Go SSD
 
 Installation of libvirt KVM is quite straigth forward action:
 ```
-host ~]# yum install -y libvirt ...  
+host ~]# yum install -y yum install libvirt qemu-kvm virt-manager virt-install libguestfs-tools  
 ```
 
 Start and enable libvirt
 ```
-host ~]# systemctl enable libvirtd  
+host ~]# systemctl enable libvirtd
+host ~]# systemctl start libvirtd
 ```
 
 
 ## Enable nested virtualization
+
+Enabling nested KVM will help to have accelerated nested virtualisation:
+```
+host ~]# cat << EOF > /etc/modprobe.d/kvm_intel.conf
+options kvm-intel nested=1
+options kvm-intel enable_shadow_vmcs=1
+options kvm-intel enable_apicv=1
+options kvm-intel ept=1
+EOF
+```
+
+Disable the rp_filter to allow our virtual machines to communicate:
+```
+host ~]# cat << EOF > /etc/sysctl.d/98-rp-filter.conf
+net.ipv4.conf.default.rp_filter = 0
+net.ipv4.conf.all.rp_filter = 0
+EOF
+```
+
+Enable ip_forwarding:
+```
+host ~]# cat << EOF > /etc/sysctl.d/90-ip_forward-filter.conf
+net.ipv4.ip_forward=1
+net.ipv6.conf.default.forwarding=1
+net.ipv6.conf.all.forwarding=1
+EOF
+```
+
+Reboot the system to activate all settings:
+```
+host ~]# reboot
+```
+
+## OpenvSwitch for network bridges
+
+I will use OpenvSwitch for network bridges instead of linux traditional bridges:
+```
+host ~]# yum install openvswitch 
+```
+
+Enable OpenvSwitch:
+```
+host ~]# systemctl enable openvswitch 
+```
+
+Start OpenvSwitch:
+```
+host ~]# systemctl start openvswitch 
+```
 
 
 
