@@ -142,26 +142,93 @@ b51c43b9-7221-404c-b353-d6edc2dc7a41
 `Note:`
 To configure the external ethernet device as ovs bridge (see my previous post)
 
-## FIREWALLD
+## Libvirt openvswitch networks
+
+Create Libvirt networks accordingly to the ovs networks created.
+
+Create network definition files:
+- ovsbr-int:
+```
+host ~]# cat << EOF > /tmp/ovsnet-int.xml
+<network>
+  <name>ovsnet-int</name>
+  <forward mode='bridge'/>
+  <bridge name='ovsbr-int'/>
+  <virtualport type='openvswitch'/>
+</network>
+EOF
+```
+
+- ovsbr-ctlplane:
+```
+host ~]# cat << EOF > /tmp/ovsnet-ctlplane.xml
+<network>
+  <name>ovsnet-ctlplane</name>
+  <forward mode='bridge'/>
+  <bridge name='ovsbr-ctlplane'/>
+  <virtualport type='openvswitch'/>
+</network>
+EOF
+```
+
+Register ovs networks:
+```
+host ~]# virsh net-define /tmp/ovsnet-int.xml
+host ~]# virsh net-define /tmp/ovsnet-ctlplane.xml
+```
+
+Activate ovs networks:
+```
+host ~]# virsh net-start ovsnet-int
+host ~]# virsh net-start ovsnet-ctlplane
+```
+
+Autostart ovs networks:
+```
+host ~]# virsh net-autostart ovsnet-int
+host ~]# virsh net-autostart ovsnet-ctlplane
+```
+
+Check ovs network:
+```
+host ~]# virsh net-list
+```
+
+## Firewalld
 
 Enable firewall rule to permit the ovs bridges inter routing and NAT to the external world via `eth0`.
 
 We assume the external network device on the hypervisor is `eth0`:
 
-```firewall-cmd --permanent --direct --add-rule ipv4 nat POSTROUTING 0 -o eth0 -j MASQUERADE
+```
+host ~]# firewall-cmd --permanent --direct --add-rule ipv4 nat POSTROUTING 0 -o eth0 -j MASQUERADE
 
-firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+host ~]# firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-int -o eth0 -m conntrack --ctstate NEW -j ACCEPT
+host ~]# firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-int -o eth0 -m conntrack --ctstate NEW -j ACCEPT
 
-firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-int -o ovsbr-ctlplane -m conntrack --ctstate NEW -j ACCEPT
+host ~]# firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-int -o ovsbr-ctlplane -m conntrack --ctstate NEW -j ACCEPT
 
-firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-ctlplane -o ovsbr-int -m conntrack --ctstate NEW -j ACCEPT
+host ~]# firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-ctlplane -o ovsbr-int -m conntrack --ctstate NEW -j ACCEPT
 ```
 Reload firewall rules:
 ```
-firewall-cmd --reload
+host ~]# firewall-cmd --reload
 ```
+
+Check firewalld rules:
+```
+host ~]# firewall-cmd --direct --get-all-rules
+```
+
+## RedHat KVM guest image
+
+Download Red Hat guest image `rhel-guest-image-7.3-36.x86_64.qcow2`  from Red Hat download page and save it in `/var/lib/libvirt/images/`.
+```
+host ~]# file /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2
+/var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2: QEMU QCOW Image (v2), 10737418240 bytes
+```
+
 
 
 ### Markdown
