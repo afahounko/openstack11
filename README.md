@@ -44,7 +44,6 @@ net.ipv4.conf.default.rp_filter = 0
 net.ipv4.conf.all.rp_filter = 0
 EOF
 ```
-
 Enable ip_forwarding:
 ```
 host ~]# cat << EOF > /etc/sysctl.d/90-ip_forward-filter.conf
@@ -53,7 +52,6 @@ net.ipv6.conf.default.forwarding=1
 net.ipv6.conf.all.forwarding=1
 EOF
 ```
-
 Reboot the system to activate all settings:
 ```
 host ~]# reboot
@@ -65,12 +63,10 @@ I will use OpenvSwitch for network bridges instead of linux traditional bridges:
 ```
 host ~]# yum install openvswitch 
 ```
-
 Enable OpenvSwitch:
 ```
 host ~]# systemctl enable openvswitch 
 ```
-
 Start OpenvSwitch:
 ```
 host ~]# systemctl start openvswitch 
