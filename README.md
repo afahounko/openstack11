@@ -147,7 +147,9 @@ To configure the external ethernet device as ovs bridge (see my previous post)
 Create Libvirt networks accordingly to the ovs networks created.
 
 Create network definition files:
+
 - ovsbr-int:
+
 ```
 host ~]# cat << EOF > /tmp/ovsnet-int.xml
 <network>
@@ -160,6 +162,7 @@ EOF
 ```
 
 - ovsbr-ctlplane:
+
 ```
 host ~]# cat << EOF > /tmp/ovsnet-ctlplane.xml
 <network>
