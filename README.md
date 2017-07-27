@@ -78,13 +78,15 @@ host ~]# systemctl start openvswitch
 
 Let's create two (02) OpenvSwtich (ovs) networks `ovsbr-int` and `ovsbr-ctlplane`.
 
-ovsbr-int is the provisioning network `(10.10.0.0/24)`
-ovsbr-ctlplane is the undercloud pxe network `(192.168.24.0/24)`
+1. ovsbr-int is the provisioning network `(10.10.0.0/24)`
 
-OVS Network configuration files:
-ovsbr-int
+2. ovsbr-ctlplane is the undercloud pxe network `(192.168.24.0/24)`
+
+### OVS network configuration files:
+
+- ovsbr-int:
 ```
-cat << EOF > /etc/sysconfig/network-scripts/ifcfg-ovsbr-int
+host ~]# cat << EOF > /etc/sysconfig/network-scripts/ifcfg-ovsbr-int
 # -- Interface ovs bridge ovsbr-int
 DEVICE=ovsbr-int
 ONBOOT=yes
@@ -100,9 +102,9 @@ ZONE=public
 EOF
 ```
 
-ovsbr-ctlplane
+- ovsbr-ctlplane:
 ```
-cat << EOF > /etc/sysconfig/network-scripts/ifcfg-ovsbr-ctlplane
+host ~]# cat << EOF > /etc/sysconfig/network-scripts/ifcfg-ovsbr-ctlplane
 # -- Interface ovs bridge ovsbr-ctlplane
 DEVICE=ovsbr-ctlplane
 ONBOOT=yes
@@ -116,6 +118,49 @@ NM_CONTROLLED=no
 ZONE=public 
 # IPv6
 EOF
+```
+
+Restart network configuration:
+```
+host ~]# systemctl restart network
+```
+
+Check ovs bridge status:
+```
+host ~]# ovs-vsctl show
+b51c43b9-7221-404c-b353-d6edc2dc7a41
+    Bridge ovsbr-ctlplane
+        Port ovsbr-ctlplane
+            Interface ovsbr-ctlplane
+                type: internal
+    Bridge ovsbr-int
+        Port ovsbr-int
+            Interface ovsbr-int
+                type: internal
+```
+
+`Note:`
+To configure the external ethernet device as ovs bridge (see my previous post)
+
+## FIREWALLD
+
+Enable firewall rule to permit the ovs bridges inter routing and NAT to the external world via `eth0`.
+
+We assume the external network device on the hypervisor is `eth0`:
+
+```firewall-cmd --permanent --direct --add-rule ipv4 nat POSTROUTING 0 -o eth0 -j MASQUERADE
+
+firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-int -o eth0 -m conntrack --ctstate NEW -j ACCEPT
+
+firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-int -o ovsbr-ctlplane -m conntrack --ctstate NEW -j ACCEPT
+
+firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-ctlplane -o ovsbr-int -m conntrack --ctstate NEW -j ACCEPT
+```
+Reload firewall rules:
+```
+firewall-cmd --reload
 ```
 
 
