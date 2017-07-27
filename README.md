@@ -9,8 +9,24 @@ Processor: 2x Intel® Xeon® E5 2620 v2
 Architecture: 12 cores 24 threads 2x @2,1 Ghz cache L3 15MB, x64, VT
 RAM: 128 Go DDR3 ECC
 Hard Drive: 2 x 500Go SSD
-
 ```
+
+## Libvirt (KVM) Installation
+
+Installation of libvirt KVM is quite straigth forward action:
+```
+host ~]# yum install -y libvirt ...  
+```
+
+Start and enable libvirt
+```
+host ~]# systemctl enable libvirtd  
+```
+
+
+## Enable nested virtualization
+
+
 
 ### Markdown
 
