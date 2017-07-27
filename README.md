@@ -11,7 +11,7 @@ RAM: 128 Go DDR3 ECC
 Hard Drive: 2 x 500Go SSD
 ```
 
-## Libvirt (KVM) Installation
+## Libvirt (KVM) installation
 
 Installation of libvirt KVM is quite straigth forward action:
 ```
@@ -25,7 +25,7 @@ host ~]# systemctl start libvirtd
 ```
 
 
-## Enable nested virtualization
+## Nested virtualization
 
 Enabling nested KVM will help to have accelerated nested virtualisation:
 ```
@@ -44,6 +44,7 @@ net.ipv4.conf.default.rp_filter = 0
 net.ipv4.conf.all.rp_filter = 0
 EOF
 ```
+
 Enable ip_forwarding:
 ```
 host ~]# cat << EOF > /etc/sysctl.d/90-ip_forward-filter.conf
@@ -52,26 +53,70 @@ net.ipv6.conf.default.forwarding=1
 net.ipv6.conf.all.forwarding=1
 EOF
 ```
+
 Reboot the system to activate all settings:
 ```
 host ~]# reboot
 ```
 
-## OpenvSwitch for network bridges
+## OpenvSwitch for bridges
 
 I will use OpenvSwitch for network bridges instead of linux traditional bridges:
 ```
 host ~]# yum install openvswitch 
 ```
+
 Enable OpenvSwitch:
 ```
 host ~]# systemctl enable openvswitch 
 ```
+
 Start OpenvSwitch:
 ```
 host ~]# systemctl start openvswitch 
 ```
 
+Let's create two (02) OpenvSwtich (ovs) networks `ovsbr-int` and `ovsbr-ctlplane`.
+
+ovsbr-int is the provisioning network `(10.10.0.0/24)`
+ovsbr-ctlplane is the undercloud pxe network `(192.168.24.0/24)`
+
+OVS Network configuration files:
+ovsbr-int
+```
+cat << EOF > /etc/sysconfig/network-scripts/ifcfg-ovsbr-int
+# -- Interface ovs bridge ovsbr-int
+DEVICE=ovsbr-int
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+IPADDR=10.10.0.1
+NETMASK=255.255.255.0
+HOTPLUG=no
+NM_CONTROLLED=no
+ZONE=public 
+# IPv6
+EOF
+```
+
+ovsbr-ctlplane
+```
+cat << EOF > /etc/sysconfig/network-scripts/ifcfg-ovsbr-ctlplane
+# -- Interface ovs bridge ovsbr-ctlplane
+DEVICE=ovsbr-ctlplane
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+IPADDR=192.168.24.254
+NETMASK=255.255.255.0
+HOTPLUG=no
+NM_CONTROLLED=no
+ZONE=public 
+# IPv6
+EOF
+```
 
 
 ### Markdown
