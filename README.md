@@ -789,6 +789,132 @@ osp-undercloud ~]$ openstack subnet show $(openstack subnet list | awk '$4 == "c
 
 ## Registering nodes for the overcloud
 
+- Copy stack user ssh pub key on the KVM host (Hypervisor):
+
+```
+osp-undercloud ~]$ ssh-copy-id -i ~/.ssh/id_rsa.pub stack@10.10.0.1
+```
+
+`Note`: The password is `RedHatOSP11`
+
+Now we should be able to run the above command from the undercloud machine without requiring a password:
+
+```
+osp-undercloud ~]$ virsh --connect qemu+ssh://stack@10.10.0.1/system list --all
+ Id    Name                           State
+----------------------------------------------------
+ 1     osp-undercloud                     running
+ -     osp-overcloud-node1                shut off
+ -     osp-overcloud-node2                shut off
+ -     osp-overcloud-node3                shut off
+ -     osp-overcloud-node4                shut off
+ -     osp-overcloud-node5                shut off
+```
+
+- Creating the Overcloud Environment File:
+
+```
+osp-undercloud ~]$ for i in {1..5}; do \
+    virsh -c qemu+ssh://stack@10.10.0.1/system domiflist osp-overcloud-node$i | awk '$3 == "ovsbr-ctlplane" {print $5};'; \
+    done > ~/nodes.txt
+```
+
+- Ensure this has correctly created the nodes file:
+
+```
+osp-undercloud ~]$ cat ~/nodes.txt
+52:54:00:99:51:60
+52:54:00:1d:00:04
+52:54:00:e0:db:5e
+52:54:00:b6:99:5c
+52:54:00:b6:47:f4
+```
+
+- Create json file:
+
+```
+osp-undercloud ~]$ jq . << EOF > ~/instackenv.json
+{
+  "ssh-user": "stack",
+  "ssh-key": "$(cat ~/.ssh/id_rsa)",
+  "power_manager": "nova.virt.baremetal.virtual_power_driver.VirtualPowerManager",
+  "host-ip": "10.10.0.1",
+  "arch": "x86_64",
+  "nodes": [
+    {
+      "name": "osp-overcloud-node1",
+      "pm_addr": "10.10.0.1",
+      "pm_password": "$(cat ~/.ssh/id_rsa)",
+      "pm_type": "pxe_ssh",
+      "mac": [
+        "$(sed -n 1p ~/nodes.txt)"
+      ],
+      "cpu": "4",
+      "memory": "8192",
+      "disk": "60",
+      "arch": "x86_64",
+      "pm_user": "stack"
+    },
+    {
+      "name": "osp-overcloud-node2",
+      "pm_addr": "10.10.0.1",
+      "pm_password": "$(cat ~/.ssh/id_rsa)",
+      "pm_type": "pxe_ssh",
+      "mac": [
+        "$(sed -n 2p ~/nodes.txt)"
+      ],
+      "cpu": "4",
+      "memory": "8192",
+      "disk": "60",
+      "arch": "x86_64",
+      "pm_user": "stack"
+    },
+    {
+      "name": "osp-overcloud-node3",
+      "pm_addr": "10.10.0.1",
+      "pm_password": "$(cat ~/.ssh/id_rsa)",
+      "pm_type": "pxe_ssh",
+      "mac": [
+        "$(sed -n 3p ~/nodes.txt)"
+      ],
+      "cpu": "4",
+      "memory": "8192",
+      "disk": "60",
+      "arch": "x86_64",
+      "pm_user": "stack"
+    },
+    {
+      "name": "osp-overcloud-node4",
+      "pm_addr": "10.10.0.1",
+      "pm_password": "$(cat ~/.ssh/id_rsa)",
+      "pm_type": "pxe_ssh",
+      "mac": [
+        "$(sed -n 4p ~/nodes.txt)"
+      ],
+      "cpu": "4",
+      "memory": "8192",
+      "disk": "60",
+      "arch": "x86_64",
+      "pm_user": "stack"
+    },
+    {
+      "name": "osp-overcloud-node5",
+      "pm_addr": "10.10.0.1",
+      "pm_password": "$(cat ~/.ssh/id_rsa)",
+      "pm_type": "pxe_ssh",
+      "mac": [
+        "$(sed -n 5p ~/nodes.txt)"
+      ],
+      "cpu": "4",
+      "memory": "8192",
+      "disk": "60",
+      "arch": "x86_64",
+      "pm_user": "stack"
+    }
+  ]
+}
+EOF
+```
 
 
 
@@ -797,6 +923,53 @@ osp-undercloud ~]$ openstack subnet show $(openstack subnet list | awk '$4 == "c
 
 
 
+
+
+
+
+openstack overcloud node import ~/instackenv.json
+
+openstack baremetal node list
+
+openstack overcloud node introspect --all-manageable --provide
+
+
+
+### Control
+
+for uid in \
+        dd937bd6-42a9-485d-b10a-9ca338ec2118 \
+        853e2235-087c-4da5-b08c-1e19b71f8548 \
+        c1204492-773c-42b4-9a35-fdd753284379 \
+        ; do \
+        openstack baremetal node set --property capabilities='profile:control,boot_option:local' $uid \
+        ; done
+
+
+### Compute
+
+for uid in \
+        4b9c908a-01b5-4fb4-b0aa-a7bfdea727e7 \
+        b8e3d9f7-ef2b-430a-bec8-c2d30afe6e30 \
+        ; do \
+        openstack baremetal node set --property capabilities='profile:compute,boot_option:local' $uid \
+        ; done
+
+
+openstack overcloud profiles list
+
+
+
+
+
+[stack@osp-undercloud ~]$ cat templates/node-info.yaml
+parameter_defaults:
+  OvercloudControlFlavor: control
+  OvercloudComputeFlavor: compute
+  ControllerCount: 3
+  ComputeCount: 2
+  
+  
 
 
 
