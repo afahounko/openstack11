@@ -917,93 +917,121 @@ EOF
 ```
 
 
+### Import of overcloud nodes:
+
+```
+osp-undercloud ~]$ openstack overcloud node import ~/instackenv.json
+```
+
+- Check status of imported overcloud nodes:
+
+```
+osp-undercloud ~]$ openstack baremetal node list
+
+[stack@osp-undercloud ~]$ openstack baremetal node list
++--------------------------------------+---------------------+--------------------------------------+-------------+--------------------+-------------+
+| UUID                                 | Name                | Instance UUID                        | Power State | Provisioning State | Maintenance |
++--------------------------------------+---------------------+--------------------------------------+-------------+--------------------+-------------+
+| 853e2235-087c-4da5-b08c-1e19b71f8548 | osp-overcloud-node1 | 3bd142de-88d7-4c57-a614-9ff2c8f96b81 | power on    | active             | False       |
+| dd937bd6-42a9-485d-b10a-9ca338ec2118 | osp-overcloud-node2 | 65db65fb-b7c4-414a-bae6-8229203eab83 | power on    | active             | False       |
+| c1204492-773c-42b4-9a35-fdd753284379 | osp-overcloud-node3 | 37453576-d5bb-4835-ad54-6c3609afde8c | power on    | active             | False       |
+| 4b9c908a-01b5-4fb4-b0aa-a7bfdea727e7 | osp-overcloud-node4 | 424a0964-4574-4abd-92f6-6f781f66643f | power on    | active             | False       |
+| b8e3d9f7-ef2b-430a-bec8-c2d30afe6e30 | osp-overcloud-node5 | 5f2881c2-95b0-4d63-8f18-cb60b2321315 | power on    | active             | False       |
++--------------------------------------+---------------------+--------------------------------------+-------------+--------------------+-------------+
+```
+
+### Introspection of overcloud nodes:
+
+```
+osp-undercloud ~]$ openstack overcloud node introspect --all-manageable --provide
+```
 
 
+### Tagging nodes into profiles
+
+To tag a node into a specific profile, add a profile option to the properties/capabilities parameter for each node:
+
+- Controller profile:
+
+```
+osp-undercloud ~]$ openstack baremetal node set --property capabilities='profile:compute,boot_option:local' 58c3d07e-24f2-48a7-bbb6-6843f0e8ee13
+```
+
+- Compute profile:
+
+```
+osp-undercloud ~]$ openstack baremetal node set --property capabilities='profile:control,boot_option:local' 1a4e30da-b6dc-499d-ba87-0bd8a3819bc0
+```
+
+- Check all tagged nodes:
+
+```
+osp-undercloud ~]$ openstack overcloud profiles list
+```
 
 
+## CUSTOMIZING THE OVERCLOUD
 
+Generate customization template file undercloud:
 
+- ~/templates/node-info.yaml:
 
-
-
-
-openstack overcloud node import ~/instackenv.json
-
-openstack baremetal node list
-
-openstack overcloud node introspect --all-manageable --provide
-
-
-
-### Control
-
-for uid in \
-        dd937bd6-42a9-485d-b10a-9ca338ec2118 \
-        853e2235-087c-4da5-b08c-1e19b71f8548 \
-        c1204492-773c-42b4-9a35-fdd753284379 \
-        ; do \
-        openstack baremetal node set --property capabilities='profile:control,boot_option:local' $uid \
-        ; done
-
-
-### Compute
-
-for uid in \
-        4b9c908a-01b5-4fb4-b0aa-a7bfdea727e7 \
-        b8e3d9f7-ef2b-430a-bec8-c2d30afe6e30 \
-        ; do \
-        openstack baremetal node set --property capabilities='profile:compute,boot_option:local' $uid \
-        ; done
-
-
-openstack overcloud profiles list
-
-
-
-
-
-[stack@osp-undercloud ~]$ cat templates/node-info.yaml
+```
+osp-undercloud ~]$ cat << EOF > ~/templates/node-info.yaml
 parameter_defaults:
   OvercloudControlFlavor: control
   OvercloudComputeFlavor: compute
   ControllerCount: 3
   ComputeCount: 2
-  
-  
-
-
-
-
-
-
-### Markdown
-
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+EOF
 ```
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
 
-### Jekyll Themes
+- ~/templates/node-register.yaml:
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/afahounko/openstack11/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+```
+osp-undercloud ~]$ cat << EOF > ~/templates/node-register.yaml
+parameter_defaults:
+  rhel_reg_activation_key: "ak-osp-11"
+  rhel_reg_org: "1"
+  rhel_reg_pool_id: "valid-pool-id-123456"
+  rhel_reg_method: "satellite"
+  rhel_reg_sat_url: "http://infra-sat6.local.dc"
+  rhel_reg_sat_repo: "rhel-7-server-satellite-tools-6.2-rpms"
+  rhel_reg_repos: ""
+  rhel_reg_auto_attach: ""
+  rhel_reg_base_url: ""
+  rhel_reg_environment: ""
+  rhel_reg_force: ""
+  rhel_reg_machine_name: ""
+  rhel_reg_password: ""
+  rhel_reg_release: ""
+  rhel_reg_server_url: ""
+  rhel_reg_service_level: ""
+  rhel_reg_user: ""
+  rhel_reg_type: ""
+  rhel_reg_http_proxy_host: ""
+  rhel_reg_http_proxy_port: ""
+  rhel_reg_http_proxy_username: ""
+  rhel_reg_http_proxy_password: ""
+```
 
-### Support or Contact
+`Note`: This template provide the setting to register overcloud nodes on  satellite 6.
 
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+- Deploy overcloud:
+
+```
+osp-undercloud ~]$ openstack overcloud deploy --templates   -e ~/templates/node-info.yaml  -e ~/templates/node-register.yaml --libvirt-type kvm   --ntp-server infra-ipa.local.dc
+```
+
+`Note:` A time server for my setup is `infra-ipa.local.dc`
+
+The deployment can take up to 45 min.
+
+A the end a file `~/overcloudrc` is created with all the credentials and paths to access the Web (Horizon) interface.
+
+Enjoy your OpenStack Platform.
+
+The next post will cover how to change the overcloud behavior or settings and how to create differents tenant subnets/routers/guests.
+
+
