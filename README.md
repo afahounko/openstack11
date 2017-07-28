@@ -403,7 +403,7 @@ Name       Type        VFS  Label  MBR  Size  Parent
 ```
 
 
-## Undercloud deployment
+## Undercloud image deployment
 
 
 ### Create undercloud image
@@ -442,6 +442,12 @@ host ~]# virt-customize -a osp-undercloud.qcow2 --hostname osp-undercloud.local.
 host ~]# virt-customize -a osp-undercloud.qcow2 --uninstall cloud-init
 ```
 
+- Update the cloud image packages:
+
+```
+host ~]# virt-customize -a osp-undercloud.qcow2 --update
+```
+
 - Create network configuration files (eth0 & eth1) for `ovsbr-ctlplane` and `ovsbr-int`:
 
 ```
@@ -460,8 +466,6 @@ host ~]# virt-customize -a osp-undercloud.qcow2 --run-command 'sed -i s/ONBOOT=.
 host ~]# virt-customize -a osp-undercloud.qcow2 --run-command 'sed -i s/ONBOOT=.*/ONBOOT=yes/g /etc/sysconfig/network-scripts/ifcfg-eth1'
 ```
 
-
-
 ### Install undercloud image
 
 - Create virtual machine for the undercloud image with our two networks (ovsbr-int and ovsbr-ctlplane): 
@@ -478,11 +482,6 @@ This step will create the `osp-undercloud` domain with 16GB of memory, 4 cpu wit
 
 `Note`:
 Adding the mac address (52:54:00:5c:23:43) in the setup command will create the nic device with the specified hardware address. The connected nic interface will grab the ip address filled in the dhcp config file (10.10.0.20).
-
-```
-
-```
-
 
 Verify connectivity to this machine, with it not requiring a password:
 
@@ -520,16 +519,199 @@ host ~]# virsh snapshot-revert --domain osp-undercloud <snapshot-name>
 ```
 
 
+## Undercloud installation
+
+- Connect to the `osp-undercloud` virtual machine:
+
+```
+host ~]#  ssh root@osp-undercloud
+```
+
+- Set hostname:
+
+```
+osp-undercloud ~]# hostnamectl set-hostname osp-undercloud.local.dc
+osp-undercloud ~]# hostnamectl set-hostname --transient osp-undercloud.local.dc
+```
+
+- Set /etc/hosts file:
+
+```
+osp-undercloud ~]# cat << EOF > /etc/hosts
+# The following lines are desirable for IPv4 capable hosts
+127.0.0.1 $(hostname -f) $(hostname -s)
+127.0.0.1 localhost.localdomain localhost
+127.0.0.1 localhost4.localdomain4 localhost4
+
+# The following lines are desirable for IPv6 capable hosts
+::1 $(hostname -f) $(hostname -s)
+::1 localhost.localdomain localhost
+::1 localhost6.localdomain6 localhost6
+
+EOF
+```
+
+- Create user stack:
+
+```
+osp-undercloud ~]# useradd stack
+osp-undercloud ~]# echo "RedHatOSP11" | passwd stack --stdin
+```
+
+- Allow stack to sudo without password:
+
+```
+osp-undercloud ~]# echo "stack ALL=(root) NOPASSWD:ALL" | tee -a /etc/sudoers.d/stack
+osp-undercloud ~]# chmod 0440 /etc/sudoers.d/stack
+osp-undercloud ~]# su - stack
+osp-undercloud ~]$ whoami
+stack
+```
+
+- Create images and template folders:
+
+```
+osp-undercloud ~]$ mkdir ~/images
+osp-undercloud ~]$ mkdir ~/templates
+```
+
+- Register the system: 
+
+```
+osp-undercloud ~]$ sudo subscription-manager register
+```
+
+- Find the entitlement pool ID for Red Hat OpenStack Platform director
+
+```
+osp-undercloud ~]$ sudo subscription-manager list --available --all --matches="*OpenStack*"
+Subscription Name:   Name of SKU
+Provides:            Red Hat Single Sign-On
+                     Red Hat Enterprise Linux Workstation
+                     Red Hat CloudForms
+                     Red Hat OpenStack
+                     Red Hat Software Collections (for RHEL Workstation)
+                     Red Hat Virtualization
+SKU:                 SKU-Number
+Contract:            Contract-Number
+Pool ID:             Valid-Pool-Number-123456
+Provides Management: Yes
+Available:           1
+Suggested:           1
+Service Level:       Support-level
+Service Type:        Service-Type
+Subscription Type:   Sub-type
+Ends:                End-date
+System Type:         Physical
+```
+
+- Attach Red Hat OpenStack Platform director pool ID:
+
+```
+osp-undercloud ~]$ sudo subscription-manager attach --pool=Valid-Pool-Number-123456
+```
+
+- Disable all default repositories, and then enable the required Red Hat Enterprise Linux repositories:
+
+```
+osp-undercloud ~]$ sudo subscription-manager repos --disable=*
+osp-undercloud ~]$ sudo subscription-manager repos --enable=rhel-7-server-rpms --enable=rhel-7-server-extras-rpms --enable=rhel-7-server-rh-common-rpms --enable=rhel-ha-for-rhel-7-server-rpms --enable=rhel-7-server-openstack-11-rpms
+```
+
+- Perform an update on your system to make sure you have the latest base system packages:
+
+```
+osp-undercloud ~]$ sudo yum update -y
+osp-undercloud ~]$ sudo reboot
+```
+
+### Install Director packages
+
+```
+osp-undercloud ~]# yum install -y python-tripleoclient
+```
+
+### Director configuration
+
+Director configuration will be performed as stack user:
+
+```
+osp-undercloud ~]# su - stack
+```
+
+- undercloud config file:
+
+```
+osp-undercloud ~]$ cat << EOF > ~/undercloud.conf
+[DEFAULT]
+undercloud_hostname = $(hostname -f)
+local_ip = 192.168.24.1/24
+network_gateway = 192.168.24.1
+undercloud_public_vip = 192.168.24.2
+undercloud_admin_vip = 192.168.24.3
+local_interface = eth0
+network_cidr = 192.168.24.0/24
+masquerade_network = 192.168.24.0/24
+dhcp_start = 192.168.24.5
+dhcp_end = 192.168.24.24
+discovery_interface = br-ctlplane
+discovery_iprange = 192.168.24.100,192.168.24.120
+enabled_drivers = pxe_ipmitool,pxe_drac,pxe_ilo,pxe_ssh
+[auth]
+EOF
+```
+
+`Note`: The complete template of undercloud configuration file is located here `/usr/share/instack-undercloud/undercloud.conf.sample`
+
+- Run undercloud setup:
+
+```
+osp-undercloud ~]$ openstack undercloud install
+```
+
+The configuration script generates two files when complete:
+
+1. `undercloud-passwords.conf` - A list of all passwords for the director’s services.
+2. `stackrc` - A set of initialization variables to help you access the director’s command line tools.
 
 
+The configuration also starts all OpenStack Platform services automatically. 
+
+- Check the enabled services using the following command:
+
+```
+osp-undercloud ~]$ sudo systemctl list-units openstack-*
+```
+
+- To initialize the stack user to use the command line tools, run the following command:
+
+```
+osp-undercloud ~]$ source ~/stackrc
+```
+
+- You can now use the director’s command line tools.
+
+```
+osp-undercloud ~]$ source ~/stackrc
+```
+
+sudo yum -y install rhosp-director-images rhosp-director-images-ipa
+
+cd ~/images
+
+for i in /usr/share/rhosp-director-images/overcloud-full-latest-11.0.tar /usr/share/rhosp-director-images/ironic-python-agent-latest-11.0.tar; do tar -xvf $i; done
+
+openstack overcloud image upload --image-path /home/stack/images/
 
 
+openstack image list
 
 
+openstack subnet list
 
+openstack subnet set --dns-nameserver 10.50.0.10 --dns-nameserver 10.50.0.11 $(openstack subnet list | awk '$4 == "ctlplane-subnet" {print $2};')
 
-
-
+openstack subnet show $(openstack subnet list | awk '$4 == "ctlplane-subnet" {print $2};')
 
 
 
