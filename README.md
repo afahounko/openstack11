@@ -36,12 +36,14 @@ EOF
 
 ## Libvirt (KVM) installation
 
-Installation of libvirt KVM is quite straigth forward action:
+- Installation of libvirt KVM is quite straigth forward action:
+
 ```
 host ~]# yum install -y yum install libvirt qemu-kvm virt-manager virt-install libguestfs-tools  
 ```
 
-Start and enable libvirt
+- Start and enable libvirt:
+
 ```
 host ~]# systemctl enable libvirtd
 host ~]# systemctl start libvirtd
@@ -50,7 +52,8 @@ host ~]# systemctl start libvirtd
 
 ## Nested virtualization
 
-Enabling nested KVM will help to have accelerated nested virtualisation:
+- Enabling nested KVM will help to have accelerated nested virtualisation:
+
 ```
 host ~]# cat << EOF > /etc/modprobe.d/kvm_intel.conf
 options kvm-intel nested=1
@@ -60,7 +63,8 @@ options kvm-intel ept=1
 EOF
 ```
 
-Disable the rp_filter to allow our virtual machines to communicate:
+- Disable the rp_filter to allow our virtual machines to communicate:
+
 ```
 host ~]# cat << EOF > /etc/sysctl.d/98-rp-filter.conf
 net.ipv4.conf.default.rp_filter = 0
@@ -68,7 +72,8 @@ net.ipv4.conf.all.rp_filter = 0
 EOF
 ```
 
-Enable ip_forwarding:
+- Enable ip_forwarding:
+
 ```
 host ~]# cat << EOF > /etc/sysctl.d/90-ip_forward-filter.conf
 net.ipv4.ip_forward=1
@@ -77,14 +82,16 @@ net.ipv6.conf.all.forwarding=1
 EOF
 ```
 
-Reboot the system to activate all settings:
+- Reboot the system to activate all settings:
 ```
 host ~]# reboot
 ```
 
 ## OpenvSwitch for bridges
 
-- I will use OpenvSwitch for network bridges instead of linux traditional bridges:
+I will use OpenvSwitch for network bridges instead of linux traditional bridges.
+
+- Installation of openvswtich:
 
 ```
 host ~]# yum install openvswitch 
@@ -148,7 +155,7 @@ ZONE=public
 EOF
 ```
 
-Restart network configuration:
+- Restart network configuration:
 ```
 host ~]# systemctl restart network
 ```
@@ -174,7 +181,7 @@ To configure the external ethernet device as ovs bridge (see my previous post)
 
 Create Libvirt networks accordingly to the ovs networks created.
 
-Create network definition files:
+1. Create network definition files:
 
 - ovsbr-int:
 
@@ -202,25 +209,29 @@ host ~]# cat << EOF > /tmp/ovsnet-ctlplane.xml
 EOF
 ```
 
-Register ovs networks:
+2.  Register ovs networks:
+
 ```
 host ~]# virsh net-define /tmp/ovsnet-int.xml
 host ~]# virsh net-define /tmp/ovsnet-ctlplane.xml
 ```
 
-Activate ovs networks:
+3. Activate ovs networks:
+
 ```
 host ~]# virsh net-start ovsnet-int
 host ~]# virsh net-start ovsnet-ctlplane
 ```
 
-Autostart ovs networks:
+4. Autostart ovs networks:
+
 ```
 host ~]# virsh net-autostart ovsnet-int
 host ~]# virsh net-autostart ovsnet-ctlplane
 ```
 
-Check ovs network:
+5. Check ovs network:
+
 ```
 host ~]# virsh net-list
 ```
@@ -242,12 +253,15 @@ host ~]# firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i o
 
 host ~]# firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i ovsbr-ctlplane -o ovsbr-int -m conntrack --ctstate NEW -j ACCEPT
 ```
-Reload firewall rules:
+
+- Reload firewall rules:
+
 ```
 host ~]# firewall-cmd --reload
 ```
 
-Check firewalld rules:
+- Check firewalld rules:
+
 ```
 host ~]# firewall-cmd --direct --get-all-rules
 ```
@@ -320,6 +334,7 @@ host ~]# systemctl start dhcpd.service
 Create access on the Hypervisor so undercloud (ironic) can control virtual machines deployed on the KVM.
 
 - Create user account stack:
+
 ```
 host ~]# useradd stack
 host ~]# echo "RedHatOSP11" | passwd stack --stdin
@@ -337,7 +352,6 @@ ResultInactive=yes
 ResultActive=yes
 EOF
 ```
-
 
 ## RedHat KVM guest image
 
@@ -360,11 +374,13 @@ Format specific information:
 
 You need to install a set of tools to interact with the cloud image:
 
+- Install tools:
+
 ```
 host ~]# yum install -y libguestfs-tools libguestfs-xfs qemu-img
 ```
 
-Check Red Hat kvm cloud image actual size:
+- Check Red Hat kvm cloud image actual size:
 ```
 host ~]# virt-filesystems --long -h --all -a /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2
 
@@ -375,12 +391,12 @@ Name       Type        VFS  Label  MBR  Size  Parent
 [root@sd-73122 images]#
 ```
 
-Resize the kvm cloud image to `60GB`:
+- Resize the kvm cloud image to `60GB`:
 ```
 host ~]# qemu-img resize /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2 60G
 ```
 
-Confirm Red Hat kvm cloud image size after resizing:
+- Confirm Red Hat kvm cloud image size after resizing:
 ```
 host ~]# virt-filesystems --long -h --all -a /var/lib/libvirt/images/rhel-guest-image-7.3-36.x86_64.qcow2
 
