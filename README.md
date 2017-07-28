@@ -31,11 +31,6 @@ Let's add entries to /etc/hosts to represent it for future ease of access:
 ```
 host ~]# cat << EOF >> /etc/hosts
 10.10.0.20   osp-undercloud.local.dc osp-undercloud
-10.10.0.11   osp-overcloud-node1.local.dc osp-overcloud-node1
-10.10.0.12   osp-overcloud-node1.local.dc osp-overcloud-node2
-10.10.0.13   osp-overcloud-node1.local.dc osp-overcloud-node3
-10.10.0.14   osp-overcloud-node1.local.dc osp-overcloud-node4
-10.10.0.15   osp-overcloud-node1.local.dc osp-overcloud-node5
 EOF
 ```
 
@@ -305,36 +300,6 @@ host osp-undercloud {
   fixed-address 10.10.0.20;
 }
 
-# -- fixed ip for osp-overcloud-node1
-host osp-overcloud-node1 {
-  hardware ethernet 52:54:00:5c:23:01;
-  fixed-address 10.10.0.11;
-}
-
-# -- fixed ip for osp-overcloud-node2
-host osp-overcloud-node2 {
-  hardware ethernet 52:54:00:5c:23:02;
-  fixed-address 10.10.0.12;
-}
-
-# -- fixed ip for osp-overcloud-node3
-host osp-overcloud-node3 {
-  hardware ethernet 52:54:00:5c:23:03;
-  fixed-address 10.10.0.13;
-}
-
-# -- fixed ip for osp-overcloud-node4
-host osp-overcloud-node4 {
-  hardware ethernet 52:54:00:5c:23:04;
-  fixed-address 10.10.0.14;
-}
-
-# -- fixed ip for osp-overcloud-node5
-host osp-overcloud-node5 {
-  hardware ethernet 52:54:00:5c:23:05;
-  fixed-address 10.10.0.15;
-}
-
 EOF
 ```
 
@@ -348,6 +313,29 @@ host ~]# systemctl enable dhcpd.service
 
 ```
 host ~]# systemctl start dhcpd.service
+```
+
+## IPMI access
+
+Create access on the Hypervisor so undercloud (ironic) can control virtual machines deployed on the KVM.
+
+- Create user account stack:
+```
+host ~]# useradd stack
+host ~]# echo "RedHatOSP11" | passwd stack --stdin
+```
+
+- Grant manage privileges to user stack:
+
+```
+host ~]# cat << EOF > /etc/polkit-1/localauthority/50-local.d/50-libvirt-user-stack.pkla
+[libvirt Management Access]
+Identity=unix-user:stack
+Action=org.libvirt.unix.manage
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes
+EOF
 ```
 
 
@@ -518,6 +506,55 @@ If you ever need to restore the undercloud to the current state, you can execute
 host ~]# virsh snapshot-revert --domain osp-undercloud <snapshot-name>
 ```
 
+## Create nodes for the overcloud
+We will provision five (05) nodes for the overcloud setup: 
+- 3 x controller nodes (for HA)
+- 2 x compute nodes
+
+- Create 60GB thin-provisioned disks for the five guests:
+
+```
+host ~]# cd /var/lib/libvirt/images/
+host ~]# for i in {1..5}; do qemu-img create -f qcow2 \
+    -o preallocation=metadata osp-overcloud-node$i.qcow2 60G; done
+```
+
+Let's now create libvirt definitions for our overcloud virtual machines, ensuring the following characteristics:
+
+- 4 vCPU's
+- 8GB memory
+- 60GB disk (we just formatted)
+- 1 x nic ovsbr-ctlplane
+- 1 x nic ovsbr-int
+
+```
+host ~]# for i in {1..5}; do \
+    virt-install --ram 8192 --vcpus 4 --os-variant rhel7 \
+    --disk path=/var/lib/libvirt/images/osp-overcloud-node$i.qcow2,device=disk,bus=virtio,format=qcow2 \
+    --noautoconsole --vnc --network bridge=ovsbr-ctlplane,model=virtio,virtualport_type=openvswitch \
+    --network bridge=ovsbr-int,model=virtio,virtualport_type=openvswitch --name osp-overcloud-node$i \
+    --cpu SandyBridge,+vmx \
+    --dry-run --print-xml > /tmp/osp-overcloud-node$i.xml; \
+    virsh define --file /tmp/osp-overcloud-node$i.xml; done
+```
+
+`NOTE`: We add in the flag "--cpu SandyBridge,+vmx" here to make sure that our overcloud nodes enable nested virtualisation.
+
+We should now have a number of additional virtual machines configured, but not started:
+
+```
+host ~]# virsh list --all
+ Id    Name                           State
+----------------------------------------------------
+ 1     osp-undercloud                     running
+ -     osp-overcloud-node1                shut off
+ -     osp-overcloud-node2                shut off
+ -     osp-overcloud-node3                shut off
+ -     osp-overcloud-node4                shut off
+ -     osp-overcloud-node5                shut off
+```
+
+`NOTE:` Do NOT start these machines; we'll have OSP director manage the power status of these machines going forward.
 
 ## Undercloud installation
 
@@ -695,23 +732,66 @@ osp-undercloud ~]$ source ~/stackrc
 osp-undercloud ~]$ source ~/stackrc
 ```
 
-sudo yum -y install rhosp-director-images rhosp-director-images-ipa
 
-cd ~/images
+### Images for overcloud nodes
 
-for i in /usr/share/rhosp-director-images/overcloud-full-latest-11.0.tar /usr/share/rhosp-director-images/ironic-python-agent-latest-11.0.tar; do tar -xvf $i; done
+The director requires several disk images for provisioning overcloud nodes. This includes:
 
-openstack overcloud image upload --image-path /home/stack/images/
+1. An introspection kernel and ramdisk - Used for bare metal system introspection over PXE boot.
+2. A deployment kernel and ramdisk - Used for system provisioning and deployment.
+3. An overcloud kernel, ramdisk, and full image - A base overcloud system that is written to the node’s hard disk.
+
+- Obtain these images from the rhosp-director-images and rhosp-director-images-ipa packages:
+
+```
+osp-undercloud ~]$ sudo yum install rhosp-director-images rhosp-director-images-ipa
+```
+
+- Extract the archives to the images directory on the stack user’s home (/home/stack/images):
+
+```
+osp-undercloud ~]$ cd ~/images
+osp-undercloud ~]$ for i in /usr/share/rhosp-director-images/overcloud-full-latest-11.0.tar /usr/share/rhosp-director-images/ironic-python-agent-latest-11.0.tar; do tar -xvf $i; done
+```
+
+- Import these images into the director:
+
+```
+osp-undercloud ~]$ openstack overcloud image upload --image-path /home/stack/images/
+```
+
+This uploads the following images into the director: bm-deploy-kernel, bm-deploy-ramdisk, overcloud-full, overcloud-full-initrd, overcloud-full-vmlinuz. These are the images for deployment and the overcloud. The script also installs the introspection images on the director’s PXE server.
+
+- Check uploaded images:
+
+```
+osp-undercloud ~]$ openstack image list
+```
+
+- Check subnet:
+
+```
+osp-undercloud ~]$ openstack subnet list
+```
+
+- Define the name server for the subnet:
+
+```
+osp-undercloud ~]$ openstack subnet set --dns-nameserver 8.8.8.8 --dns-nameserver 8.8.4.4 $(openstack subnet list | awk '$4 == "ctlplane-subnet" {print $2};')
+```
+
+- Check subnet after update:
+
+```
+osp-undercloud ~]$ openstack subnet show $(openstack subnet list | awk '$4 == "ctlplane-subnet" {print $2};')
+```
 
 
-openstack image list
+## Registering nodes for the overcloud
 
 
-openstack subnet list
 
-openstack subnet set --dns-nameserver 10.50.0.10 --dns-nameserver 10.50.0.11 $(openstack subnet list | awk '$4 == "ctlplane-subnet" {print $2};')
 
-openstack subnet show $(openstack subnet list | awk '$4 == "ctlplane-subnet" {print $2};')
 
 
 
