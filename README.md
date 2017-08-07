@@ -2,7 +2,7 @@
 
 This document describes how to install Red Hat OpenStack Platform 11 on a single physical host with KVM.
 
-Note: Only for testing and not recommanded for production environment.
+``Note``: Only for testing and not recommanded for production environment.
 
 The configuration of the physical host (Hypervisor):
 ```
